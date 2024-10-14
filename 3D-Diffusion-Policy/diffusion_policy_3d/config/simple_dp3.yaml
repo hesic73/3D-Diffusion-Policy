@@ -1,5 +1,5 @@
 defaults:
-  - task: adroit_hammer
+  - task: one_cube
 
 name: train_simple_dp3
 
@@ -112,7 +112,7 @@ training:
   use_ema: True
   rollout_every: 200
   checkpoint_every: 200
-  val_every: 1
+  val_every: 50
   sample_every: 5
   max_train_steps: null
   max_val_steps: null
@@ -135,7 +135,7 @@ checkpoint:
     monitor_key: test_mean_score
     mode: max
     k: 1
-    format_str: 'epoch={epoch:04d}-test_mean_score={test_mean_score:.3f}.ckpt'
+    format_str: 'epoch={epoch:04d}.ckpt'
   save_last_ckpt: True # this only saves when save_ckpt is True
   save_last_snapshot: False
 

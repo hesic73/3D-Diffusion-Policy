@@ -9,17 +9,20 @@
 DEBUG=False
 save_ckpt=True
 
-alg_name=${1}
-task_name=${2}
+seed=22
+
+alg_name=simple_dp3
+task_name=one_cube
 config_name=${alg_name}
-addition_info=${3}
-seed=${4}
+addition_info="1012_one_cube_100_arm_no_visual"
+zarr_path=/home/sichengh/24summer/MultiGraspDex/data/1012/one_cube_100_arm_no_visual.zarr
+
 exp_name=${task_name}-${alg_name}-${addition_info}
 run_dir="data/outputs/${exp_name}_seed${seed}"
 
 
 # gpu_id=$(bash scripts/find_gpu.sh)
-gpu_id=${5}
+gpu_id=1
 echo -e "\033[33mgpu id (to use): ${gpu_id}\033[0m"
 
 
@@ -47,7 +50,8 @@ python train.py --config-name=${config_name}.yaml \
                             training.device="cuda:0" \
                             exp_name=${exp_name} \
                             logging.mode=${wandb_mode} \
-                            checkpoint.save_ckpt=${save_ckpt}
+                            checkpoint.save_ckpt=${save_ckpt} \
+                            task.dataset.zarr_path=${zarr_path}
 
 
 
