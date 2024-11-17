@@ -9,13 +9,13 @@
 DEBUG=False
 save_ckpt=True
 
-seed=22
+seed=0
 
 alg_name=simple_dp3
-task_name=one_cube
+task_name=one_cube # in fact it is two cubes
 config_name=${alg_name}
-addition_info="1012_one_cube_100_arm_no_visual"
-zarr_path=/home/sichengh/24summer/MultiGraspDex/data/1012/one_cube_100_arm_no_visual.zarr
+addition_info="1116"
+zarr_path=/home/sichengh/24summer/MultiGraspDex/data/1116/one_cube_100.zarr
 
 exp_name=${task_name}-${alg_name}-${addition_info}
 run_dir="data/outputs/${exp_name}_seed${seed}"

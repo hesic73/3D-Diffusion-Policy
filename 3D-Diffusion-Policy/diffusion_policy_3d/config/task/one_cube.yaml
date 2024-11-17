@@ -12,7 +12,7 @@ shape_meta: &shape_meta # acceptable types: rgb, low_dim
       shape: [1024, 3]
       type: point_cloud
     agent_pos:
-      shape: [22]
+      shape: [23]
       type: low_dim
   action:
     shape: [22]
