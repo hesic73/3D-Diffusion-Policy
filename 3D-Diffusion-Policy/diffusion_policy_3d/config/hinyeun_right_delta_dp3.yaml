@@ -1,0 +1,17 @@
+defaults:
+  - hinyeun_right_dp3
+  - _self_
+
+exp_name: hinyeun_glue-right-delta-dp3
+
+task:
+  dataset:
+    action_representation: chunk_delta_qpos
+
+policy:
+  action_representation: chunk_delta_qpos
+  action_schema: right_only
+
+checkpoint:
+  topk:
+    k: 0

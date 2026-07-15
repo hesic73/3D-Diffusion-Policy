@@ -1,0 +1,14 @@
+defaults:
+  - hinyeun_dp3
+  - override task: hinyeun_glue_right
+  - _self_
+
+exp_name: hinyeun_glue-right-absolute-dp3
+
+policy:
+  action_representation: absolute
+  action_schema: right_only
+
+checkpoint:
+  topk:
+    k: 0

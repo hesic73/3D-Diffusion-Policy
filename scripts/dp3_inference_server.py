@@ -16,8 +16,9 @@ Client -> server:
    "height": H, "width": W, "payload_bytes": N*H*W*2}
                                                        # + N uint16 depth frames
 Server -> client:
-  {"type": "ok"} | {"type": "info", ...} |
-  {"type": "action", "actions": [[17 floats] * n_action_steps]} |
+  {"type": "ok"} | {"type": "info", "protocol_version": 3,
+   "action_layout": "bimanual" | "right_only", "action_dim": 17 | 9, ...} |
+  {"type": "action", "actions": [[action_dim floats] * n_action_steps]} |
   {"type": "error", "message": "..."}
 
 Usage:
@@ -62,6 +63,20 @@ class PolicySession:
         self.device = device
         self.n_obs_steps = int(cfg.n_obs_steps)
         self.n_action_steps = int(cfg.n_action_steps)
+        self.action_layout = policy.action_schema
+        self.action_dim = int(policy.action_dim)
+        expected_dimensions = {
+            'bimanual': (16, 17),
+            'right_only': (8, 9),
+        }
+        if self.action_layout not in expected_dimensions:
+            raise ValueError(f'unsupported action layout: {self.action_layout}')
+        self.state_dim, expected_action_dim = expected_dimensions[
+            self.action_layout]
+        if self.action_dim != expected_action_dim:
+            raise ValueError(
+                f'{self.action_layout} policy must use {expected_action_dim}-D '
+                f'actions, got {self.action_dim}')
         self.rng = np.random.default_rng()
 
     def infer(self, states, depths_mm, intrinsics):
@@ -71,7 +86,7 @@ class PolicySession:
         intrinsics = np.asarray(intrinsics, dtype=np.float64)
         count = states.shape[0]
         if states.shape != (count, 16):
-            raise ValueError(f'states must be (N,16), got {states.shape}')
+            raise ValueError(f'wire states must be (N,16), got {states.shape}')
         if depths_mm.ndim != 3 or depths_mm.shape[0] != count:
             raise ValueError(f'depths must be (N,H,W), got {depths_mm.shape}')
         if intrinsics.shape != (count, 3, 3):
@@ -79,6 +94,8 @@ class PolicySession:
         if not 1 <= count <= self.n_obs_steps:
             raise ValueError(
                 f'expected 1..{self.n_obs_steps} observations, got {count}')
+        if self.action_layout == 'right_only':
+            states = states[:, 8:16]
 
         history = []
         for state, depth_mm, K in zip(states, depths_mm, intrinsics):
@@ -96,7 +113,7 @@ class PolicySession:
         with torch.no_grad():
             result = self.policy.predict_action(obs)
         actions = result['action'][0].cpu().numpy()
-        assert actions.shape == (self.n_action_steps, 17), actions.shape
+        assert actions.shape == (self.n_action_steps, self.action_dim), actions.shape
         return actions, time.monotonic() - t0
 
 
@@ -143,11 +160,13 @@ class Handler(socketserver.StreamRequestHandler):
                 elif kind == 'info':
                     write_frame(self.wfile, {
                         'type': 'info',
-                        'protocol_version': 2,
+                        'protocol_version': 3,
                         'checkpoint': server.checkpoint,
                         'horizon': int(server.cfg.horizon),
                         'n_obs_steps': session.n_obs_steps,
                         'n_action_steps': session.n_action_steps,
+                        'action_layout': session.action_layout,
+                        'action_dim': session.action_dim,
                     })
                 elif kind == 'infer':
                     count = int(header['n_observations'])
@@ -201,7 +220,9 @@ def main():
     print(f'loading checkpoint {args.checkpoint} ...', flush=True)
     policy, cfg = load_policy(args.checkpoint, args.device)
     print(f'policy ready: n_obs_steps={cfg.n_obs_steps} '
-          f'n_action_steps={cfg.n_action_steps} horizon={cfg.horizon}', flush=True)
+          f'n_action_steps={cfg.n_action_steps} horizon={cfg.horizon} '
+          f'action_layout={policy.action_schema} action_dim={policy.action_dim}',
+          flush=True)
 
     # warm up cuda kernels so the first real request is not slow
     warm = PolicySession(policy, cfg, args.device)

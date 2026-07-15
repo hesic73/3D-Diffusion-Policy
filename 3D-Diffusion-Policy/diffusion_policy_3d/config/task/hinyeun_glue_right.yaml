@@ -1,0 +1,29 @@
+name: hinyeun_glue_right
+
+task_name: hinyeun_glue_right
+
+shape_meta: &shape_meta
+  obs:
+    point_cloud:
+      shape: [1024, 3]
+      type: point_cloud
+    agent_pos:
+      shape: [8]
+      type: low_dim
+  action:
+    shape: [9]
+
+env_runner: null
+
+dataset:
+  _target_: diffusion_policy_3d.dataset.hinyeun_dataset.HinyeunDataset
+  zarr_path: /home/user/hsc/3D-Diffusion-Policy/3D-Diffusion-Policy/data/hinyeun_glue.zarr
+  horizon: ${horizon}
+  n_obs_steps: ${n_obs_steps}
+  pad_before: ${eval:'${n_obs_steps}-1'}
+  pad_after: ${eval:'${n_action_steps}-1'}
+  seed: 42
+  val_ratio: 0.04
+  max_train_episodes: null
+  action_representation: absolute
+  action_schema: right_only

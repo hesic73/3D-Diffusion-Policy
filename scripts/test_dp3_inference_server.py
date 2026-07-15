@@ -9,15 +9,22 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import dp3_inference_server as inference_server
+from diffusion_policy_3d.policy.dp3 import DP3
 
 
 class FakePolicy:
-    def __init__(self):
+    def __init__(self, action_schema="bimanual", action_dim=17):
         self.observation = None
+        self.action_schema = action_schema
+        self.action_dim = action_dim
 
     def predict_action(self, observation):
         self.observation = observation
-        return {"action": torch.zeros((1, 8, 17), dtype=torch.float32)}
+        return {
+            "action": torch.zeros(
+                (1, 8, self.action_dim), dtype=torch.float32
+            )
+        }
 
 
 def make_session():
@@ -81,6 +88,46 @@ class PolicySessionTest(unittest.TestCase):
                 np.zeros((3, 2, 3), dtype=np.uint16),
                 np.zeros((3, 3, 3), dtype=np.float64),
             )
+
+    def test_right_only_policy_receives_only_right_state(self):
+        policy = FakePolicy("right_only", 9)
+        value = inference_server.PolicySession(
+            policy,
+            SimpleNamespace(n_obs_steps=2, n_action_steps=8),
+            "cpu",
+        )
+        states = np.stack((np.arange(16), np.arange(16) + 20)).astype(
+            np.float32
+        )
+        depths = np.ones((2, 2, 3), dtype=np.uint16)
+        intrinsics = np.stack((np.eye(3), np.eye(3)))
+
+        actions, _ = value.infer(states, depths, intrinsics)
+
+        self.assertEqual(actions.shape, (8, 9))
+        np.testing.assert_array_equal(
+            policy.observation["agent_pos"].numpy()[0], states[:, 8:16]
+        )
+
+
+class DeltaDecodeTest(unittest.TestCase):
+    def test_right_only_delta_adds_only_right_arm_anchor(self):
+        policy = object.__new__(DP3)
+        policy.action_schema = "right_only"
+        policy.action_dim = 9
+        delta = torch.zeros((1, 4, 9), dtype=torch.float32)
+        delta[:, :, 7] = 0.25
+        delta[:, :, 8] = 1.0
+        states = torch.arange(32, dtype=torch.float32).reshape(1, 4, 8)
+
+        action = policy._decode_delta_action(
+            delta, {"agent_pos": states}, observation_steps=4
+        )
+
+        expected_arm = states[:, 3, 0:7].repeat(4, 1)
+        torch.testing.assert_close(action[0, :, 0:7], expected_arm)
+        torch.testing.assert_close(action[0, :, 7], delta[0, :, 7])
+        torch.testing.assert_close(action[0, :, 8], delta[0, :, 8])
 
 
 if __name__ == "__main__":

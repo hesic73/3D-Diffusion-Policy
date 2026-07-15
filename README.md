@@ -117,8 +117,11 @@ For more detailed arguments, please refer to the scripts and the code. We here p
 ## Hinyeun glue remote inference
 
 The training machine can also serve a trained Hinyeun glue policy over TCP.
-The server reads `horizon`, `n_obs_steps`, and `n_action_steps` from the
-checkpoint and implements protocol v2 used by Gluon's `policy_rollout` client.
+The server reads `horizon`, `n_obs_steps`, `n_action_steps`, and the action
+schema from the checkpoint. Protocol v3 returns either 17-D bimanual actions
+or 9-D right-only actions. For right-only policies the server discards the
+left-side state before inference; Gluon locally holds the left arm at its
+rollout-start position while expanding the result to the 17-D robot schema.
 For a new host, create the verified real-robot environment once with
 `bash scripts/setup_dp3_env.sh`.
 

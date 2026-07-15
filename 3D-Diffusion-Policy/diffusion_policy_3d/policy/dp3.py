@@ -44,6 +44,7 @@ class DP3(BasePolicy):
             pointnet_type="pointnet",
             pointcloud_encoder_cfg=None,
             action_representation='absolute',
+            action_schema='bimanual',
             # parameters passed to step
             **kwargs):
         super().__init__()
@@ -51,6 +52,8 @@ class DP3(BasePolicy):
         if action_representation not in ('absolute', 'chunk_delta_qpos'):
             raise ValueError(
                 f'Unsupported action representation: {action_representation}')
+        if action_schema not in ('bimanual', 'right_only'):
+            raise ValueError(f'Unsupported action schema: {action_schema}')
 
         self.condition_type = condition_type
 
@@ -131,6 +134,7 @@ class DP3(BasePolicy):
         self.n_obs_steps = n_obs_steps
         self.obs_as_global_cond = obs_as_global_cond
         self.action_representation = action_representation
+        self.action_schema = action_schema
         self.kwargs = kwargs
 
         if num_inference_steps is None:
@@ -258,17 +262,30 @@ class DP3(BasePolicy):
             'action_pred': action_pred,
         }
         if self.action_representation == 'chunk_delta_qpos':
-            if self.action_dim != 17 or obs_dict['agent_pos'].shape[-1] != 16:
-                raise RuntimeError(
-                    'chunk_delta_qpos expects 17-D actions and 16-D agent_pos')
             result['action_delta'] = action
-            action = action.clone()
-            q_ref = obs_dict['agent_pos'][:, To - 1]
-            action[:, :, 0:7] += q_ref[:, None, 0:7]
-            action[:, :, 8:15] += q_ref[:, None, 8:15]
+            action = self._decode_delta_action(action, obs_dict, To)
         result['action'] = action
         
         return result
+
+    def _decode_delta_action(self, action, obs_dict, observation_steps):
+        dimensions = {
+            'bimanual': (17, 16),
+            'right_only': (9, 8),
+        }
+        expected_action, expected_state = dimensions[self.action_schema]
+        if (self.action_dim != expected_action
+                or obs_dict['agent_pos'].shape[-1] != expected_state):
+            raise RuntimeError(
+                f'{self.action_schema} chunk_delta_qpos expects '
+                f'{expected_action}-D actions and '
+                f'{expected_state}-D agent_pos')
+        decoded = action.clone()
+        q_ref = obs_dict['agent_pos'][:, observation_steps - 1]
+        decoded[:, :, 0:7] += q_ref[:, None, 0:7]
+        if self.action_schema == 'bimanual':
+            decoded[:, :, 8:15] += q_ref[:, None, 8:15]
+        return decoded
 
     # ========= training  ============
     def set_normalizer(self, normalizer: LinearNormalizer):
