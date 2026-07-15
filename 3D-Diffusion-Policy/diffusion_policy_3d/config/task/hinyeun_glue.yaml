@@ -1,0 +1,28 @@
+name: hinyeun_glue
+
+task_name: hinyeun_glue
+
+shape_meta: &shape_meta
+  # acceptable types: rgb, low_dim
+  obs:
+    point_cloud:
+      shape: [1024, 3]
+      type: point_cloud
+    agent_pos:
+      shape: [16]
+      type: low_dim
+  action:
+    shape: [17]
+
+env_runner: null
+
+dataset:
+  _target_: diffusion_policy_3d.dataset.hinyeun_dataset.HinyeunDataset
+  # absolute path: train.py chdirs away from the repo at import time
+  zarr_path: /home/hsc/26summer/3D-Diffusion-Policy/3D-Diffusion-Policy/data/hinyeun_glue.zarr
+  horizon: ${horizon}
+  pad_before: ${eval:'${n_obs_steps}-1'}
+  pad_after: ${eval:'${n_action_steps}-1'}
+  seed: 42
+  val_ratio: 0.04
+  max_train_episodes: null

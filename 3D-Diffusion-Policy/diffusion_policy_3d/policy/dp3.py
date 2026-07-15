@@ -8,7 +8,10 @@ from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 from termcolor import cprint
 import copy
 import time
-import pytorch3d.ops as torch3d_ops
+try:
+    import pytorch3d.ops as torch3d_ops
+except ImportError:
+    torch3d_ops = None  # not used by DP3; avoids a hard dependency on pytorch3d
 
 from diffusion_policy_3d.model.common.normalizer import LinearNormalizer
 from diffusion_policy_3d.policy.base_policy import BasePolicy

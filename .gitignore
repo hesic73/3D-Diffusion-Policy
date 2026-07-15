@@ -44,3 +44,7 @@ personal_TASK.md
 easytrain.sh
 nohup.out
 output/
+# hinyeun glue project outputs
+pcd_check/
+*.zarr/
+wandb/
