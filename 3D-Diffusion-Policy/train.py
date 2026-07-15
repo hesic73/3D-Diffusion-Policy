@@ -303,23 +303,15 @@ class TrainDP3Workspace:
                 step_log['test_mean_score'] = - train_loss
                 
             # checkpoint
-            periodic_ckpt = (self.epoch % cfg.training.checkpoint_every) == 0
-            save_epochs = cfg.checkpoint.get('save_epochs', None)
-            scheduled_ckpt = save_epochs is not None and self.epoch in save_epochs
-            if cfg.checkpoint.save_ckpt and (periodic_ckpt or scheduled_ckpt):
+            if (self.epoch % cfg.training.checkpoint_every) == 0 and cfg.checkpoint.save_ckpt:
                 # checkpointing
-                if periodic_ckpt and cfg.checkpoint.save_last_ckpt:
+                if cfg.checkpoint.save_last_ckpt:
                     self.save_checkpoint()
-                save_epoch_ckpt = cfg.checkpoint.get('save_all_ckpt', False)
-                if save_epochs is not None:
-                    save_epoch_ckpt = save_epoch_ckpt and scheduled_ckpt
-                else:
-                    save_epoch_ckpt = save_epoch_ckpt and periodic_ckpt
-                if save_epoch_ckpt:
+                if cfg.checkpoint.get('save_all_ckpt', False):
                     self.save_checkpoint(
                         path=pathlib.Path(self.output_dir).joinpath(
                             'checkpoints', f'epoch={self.epoch:04d}.ckpt'))
-                if periodic_ckpt and cfg.checkpoint.save_last_snapshot:
+                if cfg.checkpoint.save_last_snapshot:
                     self.save_snapshot()
 
                 # sanitize metric names
@@ -331,9 +323,7 @@ class TrainDP3Workspace:
                 # We can't copy the last checkpoint here
                 # since save_checkpoint uses threads.
                 # therefore at this point the file might have been empty!
-                topk_ckpt_path = None
-                if periodic_ckpt:
-                    topk_ckpt_path = topk_manager.get_ckpt_path(metric_dict)
+                topk_ckpt_path = topk_manager.get_ckpt_path(metric_dict)
 
                 if topk_ckpt_path is not None:
                     self.save_checkpoint(path=topk_ckpt_path)
