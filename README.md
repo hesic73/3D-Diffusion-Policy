@@ -119,6 +119,8 @@ For more detailed arguments, please refer to the scripts and the code. We here p
 The training machine can also serve a trained Hinyeun glue policy over TCP.
 The server reads `horizon`, `n_obs_steps`, and `n_action_steps` from the
 checkpoint and implements protocol v2 used by Gluon's `policy_rollout` client.
+For a new host, create the verified real-robot environment once with
+`bash scripts/setup_dp3_env.sh`.
 
 ```bash
 conda activate dp3
