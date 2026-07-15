@@ -21,8 +21,10 @@ dataset:
   # absolute path: train.py chdirs away from the repo at import time
   zarr_path: /home/hsc/26summer/3D-Diffusion-Policy/3D-Diffusion-Policy/data/hinyeun_glue.zarr
   horizon: ${horizon}
+  n_obs_steps: ${n_obs_steps}
   pad_before: ${eval:'${n_obs_steps}-1'}
   pad_after: ${eval:'${n_action_steps}-1'}
   seed: 42
   val_ratio: 0.04
   max_train_episodes: null
+  action_representation: absolute

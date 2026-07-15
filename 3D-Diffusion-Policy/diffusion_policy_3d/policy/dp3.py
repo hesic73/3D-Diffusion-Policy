@@ -43,9 +43,14 @@ class DP3(BasePolicy):
             use_pc_color=False,
             pointnet_type="pointnet",
             pointcloud_encoder_cfg=None,
+            action_representation='absolute',
             # parameters passed to step
             **kwargs):
         super().__init__()
+
+        if action_representation not in ('absolute', 'chunk_delta_qpos'):
+            raise ValueError(
+                f'Unsupported action representation: {action_representation}')
 
         self.condition_type = condition_type
 
@@ -125,6 +130,7 @@ class DP3(BasePolicy):
         self.n_action_steps = n_action_steps
         self.n_obs_steps = n_obs_steps
         self.obs_as_global_cond = obs_as_global_cond
+        self.action_representation = action_representation
         self.kwargs = kwargs
 
         if num_inference_steps is None:
@@ -249,9 +255,18 @@ class DP3(BasePolicy):
 
 
         result = {
-            'action': action,
             'action_pred': action_pred,
         }
+        if self.action_representation == 'chunk_delta_qpos':
+            if self.action_dim != 17 or obs_dict['agent_pos'].shape[-1] != 16:
+                raise RuntimeError(
+                    'chunk_delta_qpos expects 17-D actions and 16-D agent_pos')
+            result['action_delta'] = action
+            action = action.clone()
+            q_ref = obs_dict['agent_pos'][:, To - 1]
+            action[:, :, 0:7] += q_ref[:, None, 0:7]
+            action[:, :, 8:15] += q_ref[:, None, 8:15]
+        result['action'] = action
         
         return result
 
@@ -376,4 +391,3 @@ class DP3(BasePolicy):
         # print(f"t6-t5: {t6-t5:.3f}")
         
         return loss, loss_dict
-

@@ -1,0 +1,31 @@
+defaults:
+  - dp3
+  - override task: hinyeun_glue
+  - _self_
+
+# Longer temporal context for the Hinyeun demonstrations.
+horizon: 32
+n_obs_steps: 4
+n_action_steps: 16
+
+exp_name: hinyeun_glue-dp3-long-horizon
+
+task:
+  dataset:
+    val_ratio: 0.10 # 5 held-out episodes out of 52
+
+logging:
+  mode: online
+
+checkpoint:
+  save_ckpt: true
+  save_all_ckpt: true # preserve a separate epoch checkpoint at every save
+  save_last_ckpt: true # also update latest.ckpt for automatic resume
+  topk:
+    monitor_key: val_loss
+    mode: min
+    format_str: 'epoch={epoch:04d}-val_loss={val_loss:.4f}.ckpt'
+
+training:
+  checkpoint_every: 100
+  run_validation: true

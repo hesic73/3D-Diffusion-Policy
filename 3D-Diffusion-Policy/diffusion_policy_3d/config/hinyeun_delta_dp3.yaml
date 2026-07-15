@@ -1,0 +1,18 @@
+defaults:
+  - hinyeun_dp3
+  - _self_
+
+exp_name: hinyeun_glue-delta-dp3-long-horizon
+
+task:
+  dataset:
+    action_representation: chunk_delta_qpos
+
+policy:
+  action_representation: chunk_delta_qpos
+
+# Every 100-epoch snapshot is already retained, so avoid a duplicate top-1
+# checkpoint containing the same state under a val-loss filename.
+checkpoint:
+  topk:
+    k: 0

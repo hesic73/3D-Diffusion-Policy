@@ -87,7 +87,7 @@ class TrainDP3Workspace:
             RUN_CKPT = True
             verbose = False
         
-        RUN_VALIDATION = False # reduce time cost
+        RUN_VALIDATION = cfg.training.get('run_validation', False)
         
         # resume training
         if cfg.training.resume:
@@ -270,13 +270,13 @@ class TrainDP3Workspace:
                             leave=False, mininterval=cfg.training.tqdm_interval_sec) as tepoch:
                         for batch_idx, batch in enumerate(tepoch):
                             batch = dict_apply(batch, lambda x: x.to(device, non_blocking=True))
-                            loss, loss_dict = self.model.compute_loss(batch)
+                            loss, loss_dict = policy.compute_loss(batch)
                             val_losses.append(loss)
                             if (cfg.training.max_val_steps is not None) \
                                 and batch_idx >= (cfg.training.max_val_steps-1):
                                 break
                     if len(val_losses) > 0:
-                        val_loss = torch.mean(torch.tensor(val_losses)).item()
+                        val_loss = torch.stack(val_losses).mean().item()
                         # log epoch average validation loss
                         step_log['val_loss'] = val_loss
 
@@ -307,6 +307,10 @@ class TrainDP3Workspace:
                 # checkpointing
                 if cfg.checkpoint.save_last_ckpt:
                     self.save_checkpoint()
+                if cfg.checkpoint.get('save_all_ckpt', False):
+                    self.save_checkpoint(
+                        path=pathlib.Path(self.output_dir).joinpath(
+                            'checkpoints', f'epoch={self.epoch:04d}.ckpt'))
                 if cfg.checkpoint.save_last_snapshot:
                     self.save_snapshot()
 
