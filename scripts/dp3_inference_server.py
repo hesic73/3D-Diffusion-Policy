@@ -9,13 +9,15 @@ Framing (both directions): 4-byte big-endian header length, JSON header,
 then `payload_bytes` of raw payload as declared in the header.
 
 Client -> server:
-  {"type": "reset"}                                  # clear obs history
-  {"type": "infer", "state": [16 floats],
-   "k": [9 floats, row-major 3x3 intrinsics],
-   "height": H, "width": W, "payload_bytes": H*W*2}  # + uint16 depth in mm
+  {"type": "reset"}                                  # begin an episode
+  {"type": "info"}                                   # checkpoint + chunk shape
+  {"type": "infer", "n_observations": N,
+   "states": [[16 floats] * N], "intrinsics": [[9 floats] * N],
+   "height": H, "width": W, "payload_bytes": N*H*W*2}
+                                                       # + N uint16 depth frames
 Server -> client:
-  {"type": "ok"}                                     # reset ack
-  {"type": "action", "actions": [[17 floats] * n_action_steps]}
+  {"type": "ok"} | {"type": "info", ...} |
+  {"type": "action", "actions": [[17 floats] * n_action_steps]} |
   {"type": "error", "message": "..."}
 
 Usage:
@@ -29,7 +31,6 @@ import socketserver
 import struct
 import sys
 import time
-from collections import deque
 
 import numpy as np
 import torch
@@ -62,23 +63,35 @@ class PolicySession:
         self.n_obs_steps = int(cfg.n_obs_steps)
         self.n_action_steps = int(cfg.n_action_steps)
         self.rng = np.random.default_rng()
-        self.history = deque(maxlen=self.n_obs_steps)
 
-    def reset(self):
-        self.history.clear()
-
-    def infer(self, state, depth_mm, K):
+    def infer(self, states, depths_mm, intrinsics):
         t0 = time.monotonic()
-        depth_m = depth_mm.astype(np.float32) * 0.001
-        pcd = depth_m_to_workspace_cloud(depth_m, K, self.rng, device=self.device)
-        self.history.append((pcd, state))
-        while len(self.history) < self.n_obs_steps:
-            self.history.appendleft(self.history[0])
+        states = np.asarray(states, dtype=np.float32)
+        depths_mm = np.asarray(depths_mm, dtype=np.uint16)
+        intrinsics = np.asarray(intrinsics, dtype=np.float64)
+        count = states.shape[0]
+        if states.shape != (count, 16):
+            raise ValueError(f'states must be (N,16), got {states.shape}')
+        if depths_mm.ndim != 3 or depths_mm.shape[0] != count:
+            raise ValueError(f'depths must be (N,H,W), got {depths_mm.shape}')
+        if intrinsics.shape != (count, 3, 3):
+            raise ValueError(f'intrinsics must be (N,3,3), got {intrinsics.shape}')
+        if not 1 <= count <= self.n_obs_steps:
+            raise ValueError(
+                f'expected 1..{self.n_obs_steps} observations, got {count}')
+
+        history = []
+        for state, depth_mm, K in zip(states, depths_mm, intrinsics):
+            depth_m = depth_mm.astype(np.float32) * 0.001
+            pcd = depth_m_to_workspace_cloud(
+                depth_m, K, self.rng, device=self.device)
+            history.append((pcd, state))
+        history = [history[0]] * (self.n_obs_steps - count) + history
         obs = {
             'point_cloud': torch.from_numpy(
-                np.stack([h[0] for h in self.history])[None]).to(self.device),
+                np.stack([h[0] for h in history])[None]).to(self.device),
             'agent_pos': torch.from_numpy(
-                np.stack([h[1] for h in self.history])[None]).to(self.device),
+                np.stack([h[1] for h in history])[None]).to(self.device),
         }
         with torch.no_grad():
             result = self.policy.predict_action(obs)
@@ -126,23 +139,26 @@ class Handler(socketserver.StreamRequestHandler):
             try:
                 kind = header['type']
                 if kind == 'reset':
-                    session.reset()
                     write_frame(self.wfile, {'type': 'ok'})
                 elif kind == 'info':
                     write_frame(self.wfile, {
                         'type': 'info',
+                        'protocol_version': 2,
                         'checkpoint': server.checkpoint,
+                        'horizon': int(server.cfg.horizon),
                         'n_obs_steps': session.n_obs_steps,
                         'n_action_steps': session.n_action_steps,
                     })
                 elif kind == 'infer':
-                    state = np.asarray(header['state'], dtype=np.float32)
-                    if state.shape != (16,):
-                        raise ValueError(f'state must be 16-D, got {state.shape}')
-                    K = np.asarray(header['k'], dtype=np.float64).reshape(3, 3)
+                    count = int(header['n_observations'])
+                    states = np.asarray(header['states'], dtype=np.float32)
+                    intrinsics = np.asarray(
+                        header['intrinsics'], dtype=np.float64).reshape(
+                            count, 3, 3)
                     h, w = int(header['height']), int(header['width'])
-                    depth = np.frombuffer(payload, dtype='<u2').reshape(h, w)
-                    actions, dt = session.infer(state, depth, K)
+                    depths = np.frombuffer(payload, dtype='<u2').reshape(
+                        count, h, w)
+                    actions, dt = session.infer(states, depths, intrinsics)
                     write_frame(self.wfile, {
                         'type': 'action',
                         'actions': [[float(v) for v in row] for row in actions],
@@ -191,7 +207,11 @@ def main():
     warm = PolicySession(policy, cfg, args.device)
     fake_depth = np.full((800, 1280), 900, dtype=np.uint16)
     fake_k = np.array([[611.0, 0, 640.9], [0, 610.9, 407.4], [0, 0, 1.0]])
-    _, dt = warm.infer(np.zeros(16, dtype=np.float32), fake_depth, fake_k)
+    _, dt = warm.infer(
+        np.zeros((1, 16), dtype=np.float32),
+        fake_depth[None],
+        fake_k[None],
+    )
     print(f'warmup inference: {dt*1000:.0f} ms', flush=True)
 
     server = InferenceServer((args.listen, args.port), policy, cfg,

@@ -114,6 +114,33 @@ For more detailed arguments, please refer to the scripts and the code. We here p
 
 # 🤖 Real Robot
 
+## Hinyeun glue remote inference
+
+The training machine can also serve a trained Hinyeun glue policy over TCP.
+The server reads `horizon`, `n_obs_steps`, and `n_action_steps` from the
+checkpoint and implements protocol v2 used by Gluon's `policy_rollout` client.
+
+```bash
+conda activate dp3
+python scripts/dp3_inference_server.py \
+    --checkpoint /path/to/checkpoint.ckpt \
+    --listen 0.0.0.0 \
+    --port 8890
+```
+
+For a smaller file to transfer, first export only the EMA policy and its Hydra
+configuration:
+
+```bash
+python scripts/export_deploy_checkpoint.py \
+    /path/to/training.ckpt /path/to/deploy.ckpt
+```
+
+Point the robot-side rollout client at the training machine's reachable IP and
+port. TCP port 8890 must be permitted by the server firewall. This protocol has
+no authentication or encryption, so expose it only on a trusted LAN/VPN or
+place it behind a secure tunnel.
+
 **Hardware Setup**
 1. Franka Robot
 2. Allegro Hand
