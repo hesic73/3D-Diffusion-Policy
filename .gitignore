@@ -48,3 +48,8 @@ output/
 pcd_check/
 *.zarr/
 wandb/
+
+# Camera-migration diagnostics are local artifacts. Keep only the accepted
+# calibration needed to reproduce conversion and deployment preprocessing.
+migration/*
+!migration/camera_delta_ep0_rgbd.json

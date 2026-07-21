@@ -69,21 +69,36 @@ def depth_m_to_workspace_cloud(depth_m, K, rng,
                                stride=PIXEL_STRIDE,
                                pre_sample=PRE_SAMPLE,
                                num_points=NUM_POINTS,
-                               device='cuda'):
+                               device='cuda',
+                               T_delta=None,
+                               gravity=None,
+                               work_space=None):
     """depth_m: (H,W) float32 metres, 0 = invalid. K: 3x3 intrinsics of the
     depth/color-registered frame. Returns (num_points, 3) float32 in the
-    gravity-aligned frame."""
+    gravity-aligned frame.
+
+    Migration overrides (all default to the original behaviour):
+      T_delta   4x4 old-cam -> new-cam transform applied to the back-projected
+                camera-optical points before gravity alignment.
+      gravity   camera-frame down vector to use instead of GRAVITY_CAM.
+      work_space  crop bbox dict {'x','y','z'} to use instead of WORK_SPACE."""
+    R = R_G if gravity is None else gravity_rotation(np.asarray(gravity))
+    ws = WORK_SPACE if work_space is None else work_space
     depth_m = depth_m[::stride, ::stride]
     v, u = np.indices(depth_m.shape, dtype=np.float32)
     valid = depth_m > 0
     z = depth_m[valid]
     x = (u[valid] * stride - K[0, 2]) * z / K[0, 0]
     y = (v[valid] * stride - K[1, 2]) * z / K[1, 1]
-    pc = np.stack([x, y, z], axis=-1) @ R_G.T
+    pts_cam = np.stack([x, y, z], axis=-1)
+    if T_delta is not None:
+        T_delta = np.asarray(T_delta)
+        pts_cam = pts_cam @ T_delta[:3, :3].T + T_delta[:3, 3]
+    pc = pts_cam @ R.T
 
-    m = ((pc[:, 0] > WORK_SPACE['x'][0]) & (pc[:, 0] < WORK_SPACE['x'][1]) &
-         (pc[:, 1] > WORK_SPACE['y'][0]) & (pc[:, 1] < WORK_SPACE['y'][1]) &
-         (pc[:, 2] > WORK_SPACE['z'][0]) & (pc[:, 2] < WORK_SPACE['z'][1]))
+    m = ((pc[:, 0] > ws['x'][0]) & (pc[:, 0] < ws['x'][1]) &
+         (pc[:, 1] > ws['y'][0]) & (pc[:, 1] < ws['y'][1]) &
+         (pc[:, 2] > ws['z'][0]) & (pc[:, 2] < ws['z'][1]))
     pc = pc[m]
     if pc.shape[0] == 0:
         raise RuntimeError('empty point cloud after workspace crop')

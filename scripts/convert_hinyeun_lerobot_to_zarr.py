@@ -20,6 +20,7 @@ Usage:
 import argparse
 import json
 import os
+import shutil
 
 import av
 import numpy as np
@@ -43,10 +44,13 @@ def depth_m_per_code(info):
 
 
 def depth_to_workspace_cloud(depth_codes, K, stride, rng, m_per_code,
-                             num_points=1024, device='cuda'):
+                             num_points=1024, device='cuda', delta=None):
     depth_m = depth_codes.astype(np.float32) * m_per_code
+    delta = delta or {}
     return depth_m_to_workspace_cloud(
-        depth_m, K, rng, stride=stride, num_points=num_points, device=device)
+        depth_m, K, rng, stride=stride, num_points=num_points, device=device,
+        T_delta=delta.get('T_delta'), gravity=delta.get('gravity'),
+        work_space=delta.get('work_space'))
 
 
 def main():
@@ -58,10 +62,26 @@ def main():
     ap.add_argument('--stride', type=int, default=2, help='depth image pixel stride')
     ap.add_argument('--episodes', type=int, default=None, help='limit number of episodes (debug)')
     ap.add_argument('--device', default='cuda')
+    ap.add_argument('--delta', default=None,
+                    help='camera_delta.json from estimate_camera_delta.py; '
+                         'retargets clouds to the new camera setup')
     args = ap.parse_args()
 
-    root = args.root
+    root = os.path.abspath(args.root)
+    out = os.path.abspath(args.out)
+    if os.path.commonpath([root, out]) == root:
+        raise ValueError('--out must not be the source dataset or one of its children')
     rng = np.random.default_rng(42)
+
+    delta = None
+    if args.delta:
+        with open(args.delta) as f:
+            d = json.load(f)
+        delta = {'T_delta': np.asarray(d['T_delta'], dtype=np.float64),
+                 'gravity': np.asarray(d['gravity_cam_new'], dtype=np.float64),
+                 'work_space': {k: tuple(v) for k, v in d['work_space_new'].items()}}
+        cprint(f"retargeting with {args.delta}: fitness={d['fitness']:.3f} "
+               f"rmse={d['rmse_m'] * 1000:.2f}mm", 'yellow')
 
     with open(os.path.join(root, 'meta/info.json')) as f:
         info = json.load(f)
@@ -112,7 +132,7 @@ def main():
                     t = wanted[vidx]
                     pcd = depth_to_workspace_cloud(
                         frame.to_ndarray(), K, args.stride, rng, m_per_code,
-                        num_points=args.num_points, device=args.device)
+                        num_points=args.num_points, device=args.device, delta=delta)
                     pcd_out.append(pcd.astype(np.float32))
                     state_out.append(np.asarray(df.iloc[t]['observation.state'], dtype=np.float32))
                     action_out.append(np.asarray(df.iloc[t]['action'], dtype=np.float32))
@@ -130,12 +150,12 @@ def main():
     pcd_arr = np.stack(pcd_out)
     ee_arr = np.array(episode_ends, dtype=np.int64)
 
-    if os.path.exists(args.out):
-        cprint(f'Overwriting {args.out}', 'red')
-        os.system(f'rm -rf {args.out}')
-    os.makedirs(args.out, exist_ok=True)
+    if os.path.exists(out):
+        cprint(f'Overwriting {out}', 'red')
+        shutil.rmtree(out)
+    os.makedirs(out, exist_ok=True)
 
-    zroot = zarr.group(args.out)
+    zroot = zarr.group(out)
     zdata = zroot.create_group('data')
     zmeta = zroot.create_group('meta')
     compressor = zarr.Blosc(cname='zstd', clevel=3, shuffle=1)
@@ -151,7 +171,7 @@ def main():
 
     cprint(f'state {state_arr.shape}  action {action_arr.shape}  '
            f'point_cloud {pcd_arr.shape}  episodes {len(ee_arr)}', 'cyan')
-    cprint(f'saved to {args.out}', 'cyan')
+    cprint(f'saved to {out}', 'cyan')
 
 
 if __name__ == '__main__':
