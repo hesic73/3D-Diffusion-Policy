@@ -1,5 +1,9 @@
 
 
+> Fork used by the Hinyeun glue-dispensing pipeline; the workstation-side
+> repo is `gluon`. See [docs/HINYEUN_PIPELINE.md](docs/HINYEUN_PIPELINE.md)
+> for the end-to-end data/training/deployment flow and its safety guards.
+
 # <a href="https://3d-diffusion-policy.github.io">3D Diffusion Policy</a>
 
 <a href="https://3d-diffusion-policy.github.io"><strong>Project Page</strong></a>
