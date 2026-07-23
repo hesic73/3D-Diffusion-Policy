@@ -17,6 +17,18 @@ class FakePolicy:
         self.observation = None
         self.action_schema = action_schema
         self.action_dim = action_dim
+        self.normalizer = {
+            "agent_pos": SimpleNamespace(
+                params_dict={
+                    "scale": torch.ones(
+                        16 if action_schema == "bimanual" else 8
+                    ),
+                    "offset": torch.zeros(
+                        16 if action_schema == "bimanual" else 8
+                    ),
+                }
+            )
+        }
 
     def predict_action(self, observation):
         self.observation = observation
@@ -27,12 +39,15 @@ class FakePolicy:
         }
 
 
-def make_session():
+def make_session(max_normalized_state=float("inf")):
     policy = FakePolicy()
     value = inference_server.PolicySession(
         policy,
         SimpleNamespace(n_obs_steps=2, n_action_steps=8),
         "cpu",
+        np.array([0.0, 1.0, 0.0]),
+        {"x": (0.0, 2.0), "y": (-1.0, 1.0), "z": (-1.0, 1.0)},
+        max_normalized_state,
     )
     return value, policy
 
@@ -42,7 +57,7 @@ class PolicySessionTest(unittest.TestCase):
         self.preprocess = patch.object(
             inference_server,
             "depth_m_to_workspace_cloud",
-            side_effect=lambda depth, _k, _rng, device: np.full(
+            side_effect=lambda depth, _k, _rng, **_kwargs: np.full(
                 (4, 3), depth[0, 0], dtype=np.float32
             ),
         )
@@ -89,12 +104,27 @@ class PolicySessionTest(unittest.TestCase):
                 np.zeros((3, 3, 3), dtype=np.float64),
             )
 
+    def test_out_of_distribution_state_is_rejected(self):
+        value, _ = make_session(max_normalized_state=1.25)
+        states = np.zeros((1, 16), dtype=np.float32)
+        states[0, 5] = 1.5
+
+        with self.assertRaisesRegex(ValueError, r"state\[5\].*training range"):
+            value.infer(
+                states,
+                np.ones((1, 2, 3), dtype=np.uint16),
+                np.eye(3, dtype=np.float64)[None],
+            )
+
     def test_right_only_policy_receives_only_right_state(self):
         policy = FakePolicy("right_only", 9)
         value = inference_server.PolicySession(
             policy,
             SimpleNamespace(n_obs_steps=2, n_action_steps=8),
             "cpu",
+            np.array([0.0, 1.0, 0.0]),
+            {"x": (0.0, 2.0), "y": (-1.0, 1.0), "z": (-1.0, 1.0)},
+            float("inf"),
         )
         states = np.stack((np.arange(16), np.arange(16) + 20)).astype(
             np.float32

@@ -118,10 +118,11 @@ For more detailed arguments, please refer to the scripts and the code. We here p
 
 The training machine can also serve a trained Hinyeun glue policy over TCP.
 The server reads `horizon`, `n_obs_steps`, `n_action_steps`, and the action
-schema from the checkpoint. Protocol v3 returns either 17-D bimanual actions
+schema from the checkpoint. Protocol v4 returns either 17-D bimanual actions
 or 9-D right-only actions. For right-only policies the server discards the
 left-side state before inference; Gluon locally holds the left arm at its
-rollout-start position while expanding the result to the 17-D robot schema.
+rollout-start position and sends no left-gripper commands while expanding the
+result to the 17-D robot schema.
 For a new host, create the verified real-robot environment once with
 `bash scripts/setup_dp3_env.sh`.
 
@@ -129,9 +130,18 @@ For a new host, create the verified real-robot environment once with
 conda activate dp3
 python scripts/dp3_inference_server.py \
     --checkpoint /path/to/checkpoint.ckpt \
+    --camera-config migration/camera_delta_ep0_rgbd.json \
     --listen 0.0.0.0 \
     --port 8890
 ```
+
+For a right-arm + right-gripper + dispenser policy, train with
+`--config-name=hinyeun_right_dp3.yaml` (or
+`hinyeun_right_delta_dp3.yaml`). Confirm that server startup reports
+`action_layout=right_only action_dim=9` before connecting the rollout client.
+The camera config is mandatory and supplies the live camera's
+`gravity_cam_new` and `work_space_new`; `T_delta` is only for converting old
+training depths and is not applied to live observations.
 
 For a smaller file to transfer, first export only the EMA policy and its Hydra
 configuration:
