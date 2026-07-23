@@ -55,13 +55,20 @@ anything but `protocol_version 4`.
 - **State distribution guard**: the server normalizes every incoming
   `agent_pos` with the checkpoint's own normalizer and rejects observations
   whose normalized value exceeds `--max-normalized-state` (default 1.25).
-  Background: min-max normalization gives near-constant training dims (e.g.
-  a left arm that never moved) scales in the thousands; a live pose 0.02 rad
-  outside that range normalizes to +-80 and collapses the policy output to a
-  fixed attractor pose regardless of the point cloud. This caused the
-  2026-07-22 deployment failure (arms commanded 1.03 rad away from state).
-  For future training runs prefer a larger normalizer `range_eps` (~0.01) or
-  gaussian state normalization so the guard rarely triggers.
+  Background: 'limits' normalization maps each dim's training range to
+  [-1, 1]. Dims whose range is below `range_eps` are protected (scale 1),
+  but the default `range_eps=1e-4`
+  (`diffusion_policy_3d/model/common/normalizer.py`) is too small: a frozen
+  left-arm joint with training range 0.0004 rad escaped the protection and
+  got scale ~5000, so a live pose 0.016 rad away normalized to -80 and
+  collapsed the policy output to a fixed attractor pose regardless of the
+  point cloud — the 2026-07-22 deployment failure. For future training runs
+  pass `range_eps=0.01` at the `dataset.get_normalizer()` call in
+  `train.py` (kwargs forward to the fit): dims with training range below
+  0.01 are then treated as constant instead of amplified, and the server
+  guard only fires on genuine out-of-distribution states. Gaussian
+  normalization does NOT fix this by itself — its scale is 1/std with the
+  same 1e-4 threshold.
 - **Do not re-apply the motion model at deployment.** gluon dataset actions
   already contain the right-arm LTI correction when recorded in dynamics
   replay mode.
